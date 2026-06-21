@@ -2,13 +2,13 @@ const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const http = require('http');
 
-// 1. DUMMY SERVER FOR RENDER (Fixes Port Scan Timeout)
+// 1. RENDER BACKGROUND SERVER (Prevents Port Scan Timeout crashes)
 const port = process.env.PORT || 3000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Study Bot is running perfectly 24/7!\n');
+    res.end('Mahiru Shiina Study Bot is actively running 24/7!\n');
 }).listen(port, () => {
-    console.log(`Web server listening on port ${port}`);
+    console.log(`Web server successfully active on port ${port}`);
 });
 
 // 2. DISCORD CLIENT SETUP
@@ -23,7 +23,7 @@ const client = new Client({
     ]
 });
 
-// 3. SAFE JSON DATABASE SYSTEM
+// 3. SECURE JSON DATABASE SYSTEM
 const DB_FILE = './study_data.json';
 if (!fs.existsSync(DB_FILE)) {
     fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, todos: {} }, null, 4));
@@ -37,16 +37,16 @@ function saveData(data) {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 4));
 }
 
-// Active Sessions map aur Custom VC Tracking Map
+// Memory Tracking Maps
 const activeSessions = new Map();
-const customTrackedChannels = new Map(); // Map<ChannelId, GuildId> ke liye temporary storage
+const customTrackedChannels = new Map(); // Dynamic mapping for tracking custom created VCs
 
-// 🛑 APNI MAIN STUDY VOICE CHANNELS KI IDS YAHAN DAALO
+// 🛑 PUT YOUR MAIN PRE-DEFINED STUDY VOICE CHANNEL IDs HERE
 const ALLOWED_VOICE_CHANNELS = [
-    '123456789012345678' // Apne main study channel ki ID yahan paste karein
+    '123456789012345678' // Replace this string with your server's official main study VC ID
 ];
 
-// Helper to format time nicely (e.g., 2h 7m or 39m)
+// Time Formatter Utility (e.g., 2h 7m or 39m)
 function formatTime(totalMinutes) {
     if (totalMinutes < 60) return `${totalMinutes}m`;
     const hours = Math.floor(totalMinutes / 60);
@@ -55,171 +55,213 @@ function formatTime(totalMinutes) {
 }
 
 client.once('ready', () => {
-    console.log(`🎉 Bot is online as ${client.user.tag}!`);
-    
-    // IDLE REMINDERS LOOP (Har 30 Minutes mein chalega)
-    setInterval(() => {
-        const db = getData();
-        const sortedUsers = Object.entries(db.users).sort((a, b) => b[1].total_time - a[1].total_time);
-        const topStudierTime = sortedUsers[0] ? sortedUsers[0][1].total_time : 0;
-
-        let top5Leaderboard = "";
-        const medals = ["🥇", "🥈", "🥉", "#4", "#5"];
-        sortedUsers.slice(0, 5).forEach((user, index) => {
-            top5Leaderboard += `${medals[index]} **${user[1].username}** — ${formatTime(user[1].total_time)}\n`;
-        });
-        if (!top5Leaderboard) top5Leaderboard = "No active sessions today.";
-
-        client.guilds.cache.forEach(guild => {
-            guild.members.cache.forEach(member => {
-                if (member.user.bot) return;
-                
-                const isOnline = member.presence?.status === 'online' || member.presence?.status === 'idle';
-                const isInVC = member.voice.channelId !== null;
-                
-                if (isOnline && !isInVC) {
-                    const userData = db.users[member.id] || { total_time: 0 };
-                    const userTodayTime = userData.total_time;
-                    const timeBehind = topStudierTime - userTodayTime;
-
-                    const reminderText = `😤 **${client.user.username} here.**\n\n` +
-                        `It's been over **6 hours** since you last studied. Get back in the VC — slacking is not an option. 📚\n\n` +
-                        `📉 You've studied **${formatTime(userTodayTime)}** today.\n` +
-                        `The top studier is **${formatTime(timeBehind > 0 ? timeBehind : 0)}** ahead of you. Get back in! 🔥\n\n` +
-                        `📊 **Today's Study Leaderboard (Top 5):**\n${top5Leaderboard}\n` +
-                        `*Don't make me ask again.*`;
-
-                    member.send(reminderText).catch(() => console.log(`Could not DM ${member.user.tag}`));
-                }
-            });
-        });
-    }, 30 * 60 * 1000);
+    console.log(`🎉 Success! ${client.user.tag} is now fully deployed and active online.`);
 });
 
-// VOICE STATE UPDATE (Tracking & Clean Summary DMs)
-client.on('voiceStateUpdate', (oldState, newState) => {
-    const userId = newState.id;
-    const oldChannel = oldState.channelId;
-    const newChannel = newState.channelId;
-
-    // Check karega ki kya channel main list mein hai ya custom track kiya gaya hai
-    const isChannelTracked = (channelId) => {
-        return ALLOWED_VOICE_CHANNELS.includes(channelId) || customTrackedChannels.has(channelId);
-    };
-
-    // User Joins a Tracked VC
-    if (!oldChannel && newChannel && isChannelTracked(newChannel)) {
-        activeSessions.set(userId, Date.now());
-    }
-
-    // User Leaves or Switches from a Tracked VC
-    if (oldChannel && isChannelTracked(oldChannel) && oldChannel !== newChannel) {
-        const startTime = activeSessions.get(userId);
-        if (startTime) {
-            const sessionDurationMs = Date.now() - startTime;
-            const sessionMinutes = Math.floor(sessionDurationMs / 60000);
-            activeSessions.delete(userId);
-
-            if (sessionMinutes >= 1) { // 1 min minimum filter for clean test
-                const db = getData();
-                if (!db.users[userId]) db.users[userId] = { total_time: 0, username: newState.member.user.username };
-                db.users[userId].total_time += sessionMinutes;
-                saveData(db);
-
-                const creditsEarned = (sessionMinutes * 1.70615).toFixed(2);
-                const formattedSessionTime = formatTime(sessionMinutes);
-
-                const sessionSummaryText = `🎉 **Session Completed!**\n\n` +
-                    `⏱️ **Time Studied:** ${formattedSessionTime}\n` +
-                    `💰 **Credits Earned:** ${creditsEarned}\n\n` +
-                    `Great job staying focused! Consistency is key. Every minute counts toward your goals! 📚💪`;
-
-                newState.member.send(sessionSummaryText).catch(() => console.log(`Could not send DM`));
-            }
-        }
-    }
-});
-
-// COMMANDS HANDLER
+// 4. COMMANDS HANDLER
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
-    // 1. CUSTOM VC TRACKING COMMAND
+    // A. REGISTER COMMAND (Unlocks DM Channels for Users)
+    if (message.content === '!register') {
+        const db = getData();
+        if (!db.users[message.author.id]) {
+            db.users[message.author.id] = { total_time: 0, username: message.author.username };
+            saveData(db);
+        }
+
+        const welcomeEmbed = new EmbedBuilder()
+            .setTitle("🔒 DM Pipeline Activated Successfully!")
+            .setDescription(
+                `Hello! I am your study manager. From now on, your DM pipeline is unlocked.\n\n` +
+                `**What I will do:**\n` +
+                `• Track every single minute of your study session.\n` +
+                `• Send precise session summaries with your total credits.\n` +
+                `• Absolute surveillance: I will scold you mercilessly if you have pending tasks or dare to fall behind your server rivals.`
+            )
+            .setColor("#3498db");
+
+        message.author.send({ embeds: [welcomeEmbed] })
+            .then(() => message.reply("⚙️ Pipeline registration complete! Check your DMs—I've opened our communications link."))
+            .catch(() => message.reply("❌ Error: I tried to send a DM but failed. Please adjust your **Privacy Settings** for this server to allow direct messages, then try `!register` again."));
+        return;
+    }
+
+    // B. CUSTOM VC ON-DEMAND TRACKING
     if (message.content === '!track') {
         const voiceChannel = message.member.voice.channel;
         if (!voiceChannel) {
-            return message.reply("❌ Bhai, pehle kisi custom Voice Channel mein jaakar baitho, fir yeh command chalao!");
+            return message.reply("❌ Sit down in your custom voice channel first, then call this command!");
         }
 
-        // Custom channel ko list mein save karlo
+        // Add to temporary watchlist map
         customTrackedChannels.set(voiceChannel.id, message.guild.id);
         
-        // Agar bande ne pehle se join kiya hua hai, toh session abhi se count hona shuru ho jaye
+        // Start tracking immediately upon running the command
         activeSessions.set(message.author.id, Date.now());
 
-        return message.reply(`✅ **Tracking Started!** Ab aapke is custom VC (${voiceChannel.name}) mein baithne ka time track ho raha hai.`);
+        return message.reply(`✅ **On-Demand Tracking Initialized!** I am now actively tracking sessions in the custom channel: **${voiceChannel.name}**.`);
     }
 
-    // 2. LEADERBOARD
-    if (message.content === '!leaderboard') {
-        const db = getData();
-        const sortedUsers = Object.entries(db.users).sort((a, b) => b[1].total_time - a[1].total_time).slice(0, 10);
-
-        if (sortedUsers.length === 0) return message.reply("Abhi tak kisi ne padhai shuru nahi ki hai!");
-
-        let description = "";
-        sortedUsers.forEach((user, index) => {
-            description += `**#${index + 1}** <@${user[0]}> - \`${formatTime(user[1].total_time)}\`\n`;
-        });
-
-        const embed = new EmbedBuilder()
-            .setTitle("📚 Study Leaderboard 🏆")
-            .setDescription(description)
-            .setColor("#00ff00")
-            .setTimestamp();
-
-        message.channel.send({ embeds: [embed] });
-    }
-
-    // 3. TODO ADD
+    // C. TODO: ADD TASKS
     if (message.content.startsWith('!todo add ')) {
         const task = message.content.replace('!todo add ', '').trim();
-        if (!task) return message.reply("Task toh likho bhai!");
+        if (!task) return message.reply("Write down an actual task name!");
 
         const db = getData();
         if (!db.todos[message.author.id]) db.todos[message.author.id] = [];
         db.todos[message.author.id].push({ task, done: false });
         saveData(db);
-        message.reply(`✅ Task added: "${task}"`);
+        
+        message.reply(`📝 Added task: "${task}". Do not look for excuses, get it done!`);
     }
 
-    // 4. TODO LIST
+    // D. TODO: LIST AND MERCILESS SCOLDING
     if (message.content === '!todo list') {
         const db = getData();
         const userTodos = db.todos[message.author.id] || [];
-        if (userTodos.length === 0) return message.reply("Aapki to-do list abhi khaali hai!");
+        const pendingTasks = userTodos.filter(t => !t.done);
+
+        if (userTodos.length === 0) {
+            return message.reply("Your to-do list is empty. Are you even setting goals? Go add some tasks using `!todo add <task>` right now.");
+        }
 
         let listText = "";
         userTodos.forEach((t, i) => {
-            listText += `${i + 1}. ${t.done ? '~~' + t.task + '~~ 🟩' : t.task + ' 🟥'}\n`;
+            listText += `${i + 1}. ${t.done ? '~~' + t.task + '~~ 🟩 (Done)' : t.task + ' 🟥 (PENDING)'}\n`;
         });
-        message.reply(`📋 **Aapki To-Do List:**\n${listText}\n*Khatam karne ke liye likhein \`!todo done <number>\`*`);
+
+        if (pendingTasks.length > 0) {
+            return message.reply(
+                `😡 **You have ${pendingTasks.length} pending tasks left!**\n\n` +
+                `${listText}\n` +
+                `Are you kidding me right now? Slacking off is completely unacceptable. Put your head down and work immediately!`
+            );
+        } else {
+            return message.reply(`📋 **Your To-Do List:**\n\n${listText}\nWow, clean slate. Go add more tasks or stay focused in your channels.`);
+        }
     }
 
-    // 5. TODO DONE
+    // E. TODO: COMPLETE TASK
     if (message.content.startsWith('!todo done ')) {
         const index = parseInt(message.content.replace('!todo done ', '')) - 1;
         const db = getData();
         const userTodos = db.todos[message.author.id] || [];
 
-        if (isNaN(index) || index < 0 || index >= userTodos.length) return message.reply("Sahi list number daalo bhai!");
+        if (isNaN(index) || index < 0 || index >= userTodos.length) {
+            return message.reply("Provide a valid list index number!");
+        }
 
         userTodos[index].done = true;
         saveData(db);
-        message.reply(`🎉 Mast! Task completed: **${userTodos[index].task}**`);
+        message.reply(`🎉 Finally, a little progress! Task marked completed: **${userTodos[index].task}**.`);
+    }
+
+    // F. LEADERBOARD DISPLAY
+    if (message.content === '!leaderboard') {
+        const db = getData();
+        const sortedUsers = Object.entries(db.users).sort((a, b) => b[1].total_time - a[1].total_time).slice(0, 10);
+
+        if (sortedUsers.length === 0) {
+            return message.reply("Nobody has logged any hours today. Be the first to start studying!");
+        }
+
+        let leaderboardString = "";
+        sortedUsers.forEach((user, index) => {
+            leaderboardString += `**#${index + 1}** ${user[1].username} — \`${formatTime(user[1].total_time)}\` total\n`;
+        });
+
+        const leaderboardEmbed = new EmbedBuilder()
+            .setTitle("🏆 Today's Study Leaderboard 🏆")
+            .setDescription(leaderboardString)
+            .setColor("#2ecc71")
+            .setTimestamp();
+
+        message.channel.send({ embeds: [leaderboardEmbed] });
+    }
+});
+
+// 5. VOICE EVENTS (Tracking, Credits, Rival Comparison & Aggressive DM Scolding)
+client.on('voiceStateUpdate', (oldState, newState) => {
+    const userId = newState.id;
+    const oldChannel = oldState.channelId;
+    const newChannel = newState.channelId;
+
+    // Verification Logic: Main channels vs dynamically tracked custom channels
+    const isChannelTracked = (channelId) => {
+        return ALLOWED_VOICE_CHANNELS.includes(channelId) || customTrackedChannels.has(channelId);
+    };
+
+    // User Joins a Valid Tracked Voice Channel
+    if (!oldChannel && newChannel && isChannelTracked(newChannel)) {
+        activeSessions.set(userId, Date.now());
+    }
+
+    // User Leaves or Changes out of a Valid Tracked Voice Channel
+    if (oldChannel && isChannelTracked(oldChannel) && oldChannel !== newChannel) {
+        const startTime = activeSessions.get(userId);
+        
+        if (startTime) {
+            const durationMs = Date.now() - startTime;
+            const minutesStudied = Math.floor(durationMs / 60000);
+            activeSessions.delete(userId);
+
+            // 1-minute guard to ensure valid text configurations are met
+            if (minutesStudied >= 1) {
+                const db = getData();
+                
+                if (!db.users[userId]) {
+                    db.users[userId] = { total_time: 0, username: newState.member.user.username };
+                }
+                db.users[userId].total_time += minutesStudied;
+                db.users[userId].username = newState.member.user.username; // Updates display name dynamically
+                saveData(db);
+
+                const creditsCalculated = (minutesStudied * 1.70615).toFixed(2);
+                const sessionFormatted = formatTime(minutesStudied);
+
+                // --- 📊 COMPETITOR COMPARISON LOGIC ---
+                const sortedRivals = Object.entries(db.users).sort((a, b) => b[1].total_time - a[1].total_time);
+                const topRivalId = sortedRivals[0][0];
+                const topRivalName = sortedRivals[0][1].username;
+                const topRivalTime = sortedRivals[0][1].total_time;
+                const userCurrentTotal = db.users[userId].total_time;
+
+                let comparisonContext = "";
+                if (topRivalId === userId) {
+                    comparisonContext = `👑 **Incredible work! You are currently the #1 top studier in the server! Keep pushing to secure your throne.**`;
+                } else {
+                    const timeDifference = topRivalTime - userCurrentTotal;
+                    comparisonContext = `⚠️ **Rival Alert:** The top studier right now is **${topRivalName}**, who is **${formatTime(timeDifference > 0 ? timeDifference : 0)}** ahead of you. Get back into the trenches and overtake them! 🔥`;
+                }
+
+                // --- 😡 AGGRESSIVE TODO LIST SCOLDING LOGIC ---
+                const userTodos = db.todos[userId] || [];
+                const pendingCount = userTodos.filter(t => !t.done).length;
+                
+                let scoldSection = "";
+                if (pendingCount > 0) {
+                    scoldSection = `😡 **WHY ARE YOU LEAVING?! You still have ${pendingCount} pending tasks remaining on your list! Slacking off is not an option. Go finish them immediately!**`;
+                } else {
+                    scoldSection = `✨ Splendid job! Your to-do list is completely cleared. Keep maintaining this magnificent work ethic.`;
+                }
+
+                // Build Final Mahiru Style DM Payload
+                const summaryPayload = `🎉 **Session Completed!**\n\n` +
+                    `⏱️ **Time Studied:** ${sessionFormatted}\n` +
+                    `💰 **Credits Earned:** ${creditsCalculated}\n\n` +
+                    `Great job staying focused! Consistency is key. Every minute counts toward your goals! 📚💪\n\n` +
+                    `--- \n\n` +
+                    `${comparisonContext}\n\n` +
+                    `${scoldSection}`;
+
+                newState.member.send(summaryPayload)
+                    .catch(() => console.log(`DM delivery failed. User ${newState.member.user.tag} might have communications locked.`));
+            }
+        }
     }
 });
 
 client.login(process.env.TOKEN);
-
-              
+                           
+        
